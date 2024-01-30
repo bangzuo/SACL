@@ -211,13 +211,13 @@ if __name__ == '__main__':
         model = SACL(n_params, args, graph, mean_mat_list[0]).to(device)
 
         """define optimizer"""
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)#定义优化器
-        # ui图 生成对抗训练
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        """generative adversarial training for user-itme graoh"""
         disc_model_ui = Discriminator_ui(args.dim).to(device)
         disc_pseudo_real_ui = Discriminator_ui(args.dim).to(device)
         optimizer_D_ui = torch.optim.RMSprop(disc_model_ui.parameters(), lr=args.lr * 0.1)
         optimizer_D_pseudo_real_ui = torch.optim.RMSprop(disc_pseudo_real_ui.parameters(), lr=args.lr * 0.1)
-        # kg图 生成对抗训练
+        """generative adversarial training for knowledge graoh"""
         disc_model_kg = Discriminator_kg(args.dim).to(device)
         disc_pseudo_real_kg = Discriminator_kg(args.dim).to(device)
         optimizer_D_kg = torch.optim.RMSprop(disc_model_kg.parameters(), lr=args.lr * 0.1)
@@ -268,18 +268,14 @@ if __name__ == '__main__':
                 batch_loss.backward()
                 optimizer.step()
 
-                # 生成对抗模块训练
+                """generative adversarial module training"""
                 if (args.no_ad is False) and (step % discD_every_iter == 0):
-                    # 直接 full batch 4:1 训练这两部分 1、is_ui=True 训练ui图， 2、is_ui=Flase 训练kg
-                    if args.no_uiAug is False:
-                        train_disc(model, disc_model_ui, optimizer_D_ui, disc_pseudo_real_ui, optimizer_D_pseudo_real_ui, step, step_num, batch, annealing_type=args.annealing_type, is_ui=True)
-                    if args.no_kgAug is False:
-                        train_disc(model, disc_model_kg, optimizer_D_kg, disc_pseudo_real_kg, optimizer_D_pseudo_real_kg, step, step_num, batch, annealing_type=args.annealing_type, is_ui=False)
+                    """full batch 4:1    1) is_ui=True train the user-item graph， 2) is_ui=Flase train the knowledge graph"""
+                    train_disc(model, disc_model_ui, optimizer_D_ui, disc_pseudo_real_ui, optimizer_D_pseudo_real_ui, step, step_num, batch, annealing_type=args.annealing_type, is_ui=True)
+                    train_disc(model, disc_model_kg, optimizer_D_kg, disc_pseudo_real_kg, optimizer_D_pseudo_real_kg, step, step_num, batch, annealing_type=args.annealing_type, is_ui=False)
                     if step % discG_every_iter == 0 and step > 0:
-                        if args.no_kgAug is False:
-                            train_gen(model, optimizer, disc_model_kg, disc_pseudo_real_kg, step, batch, is_ui=True)
-                        if args.no_uiAug is False:
-                            train_gen(model, optimizer, disc_model_ui, disc_pseudo_real_ui, step, batch, is_ui=False)
+                        train_gen(model, optimizer, disc_model_kg, disc_pseudo_real_kg, step, batch, is_ui=True)
+                        train_gen(model, optimizer, disc_model_ui, disc_pseudo_real_ui, step, batch, is_ui=False)
 
                 for k, v in batch_loss_dict.items():
                     add_loss_dict[k] += v
