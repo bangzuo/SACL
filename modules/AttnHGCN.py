@@ -24,7 +24,7 @@ class RelationF_KG(nn.Module):
         self.fc2 = nn.Linear(nfeat, nfeat)
 
     def forward(self, x, neighbor, masked_neighbor):
-        # 保证 fc12 只干自己的事情，不能把梯度传给输入，且 output 需过滤为仅 user 的部分
+        """ ensure that fc12 only does its own thing, does not pass the gradient to the input """
         x = x.detach()
         neighbor = neighbor.detach()
         masked_neighbor = masked_neighbor.detach()
@@ -45,7 +45,7 @@ class RelationF_ui(nn.Module):
         self.fc2 = nn.Linear(nfeat, nfeat)
 
     def forward(self, x, neighbor, masked_neighbor):
-        # 保证 fc12 只干自己的事情，不能把梯度传给输入，且 output 需过滤为仅 user 的部分
+        """ ensure that fc12 only does its own thing, does not pass the gradient to the input, and the output should be filtered to the user only part """
         x = x.detach()
         neighbor = neighbor.detach()
         masked_neighbor = masked_neighbor.detach()
@@ -141,11 +141,10 @@ class AttnHGCN(nn.Module):
         user_agg = scatter_sum(src=item_agg, index=inter_edge[0, :], dim_size=user_emb.shape[0], dim=0)
         return entity_agg, user_agg
 
-    # 生成用于推荐的用户与项目表示
     def forward(self, user_emb, entity_emb, edge_index, edge_type,
                 inter_edge, inter_edge_w, mess_dropout=True, item_attn=None):
 
-        if item_attn is not None:  # 第一遍运行，为推荐生成嵌入的时候这个是None
+        if item_attn is not None:
             item_attn = item_attn[inter_edge[1, :]]
             item_attn = scatter_softmax(item_attn, inter_edge[0, :])
             norm = scatter_sum(torch.ones_like(inter_edge[0, :]), inter_edge[0, :], dim=0, dim_size=user_emb.shape[0])
@@ -178,7 +177,7 @@ class AttnHGCN(nn.Module):
         denoise_ui_embs, pseudo_ui_embs = embeddings, embeddings
         denoise_ui_res_embs, pseudo_ui_res_embs = denoise_ui_embs, pseudo_ui_embs
         kt_origin_pseudo_ui = pseudo_ui_embs
-        # 用于计算长尾增强图没有进行知识转移得到的嵌入表示
+        """ the embedding representation obtained without knowledge transfer is computed for the long-tail augmented graph """
         pseudo_ui_no_aug_emb = pseudo_ui_embs
         pseudo_ui_no_aug_embs = pseudo_ui_no_aug_emb
 
@@ -216,14 +215,15 @@ class AttnHGCN(nn.Module):
         kl_calc_loss_ui_embs["pseudo_ui_embs"] = pseudo_ui_res_embs
         return aug_ui_res_embs, denoise_ui_res_embs, pseudo_ui_res_embs, pseudo_ui_no_aug_embs, kl_calc_loss_ui_embs, mi_calc_loss_ui_embs
 
-    #用于对比学习，利用去噪之后的知识图谱生成项目表示（只生成项目，两张图的项目之间进行对比学习）
+    """ compute the embedding representation for contrastive learning """
     def forward_kg(self, entity_emb, denoise_edge_index, denoise_edge_type, pseudo_edge_index, pseudo_edge_type,
                    noselect_kg_index, noselect_kg_edge_type, head_kg, tail_kg, kg_degrees, mess_dropout=True):
 
         denoise_entity_emb, pseudo_entity_emb = entity_emb, entity_emb
         denoise_entity_res_emb, pseudo_entity_res_emb = denoise_entity_emb, pseudo_entity_emb
         kt_origin_pseudo_kg = pseudo_entity_emb
-        # 用于计算长尾增强图没有进行知识转移时的嵌入表示
+
+        """ the embedding representation when the long-tail augmented graph does not perform knowledge transfer """
         pseudo_kg_no_aug_emb = pseudo_entity_emb
         pseudo_kg_no_aug_embs = pseudo_kg_no_aug_emb
 
@@ -299,7 +299,7 @@ class AttnHGCN(nn.Module):
         return remain_edge_index, remain_edge_type, masked_edge_index, masked_edge_type, mask
 
     @torch.no_grad()
-    def norm_attn_computer(self, entity_emb, edge_index, n_entities, aug_kg_rate, mae_rate=0.1, edge_type=None, print_=False, return_logits=False, no_viewGen=False):
+    def norm_attn_computer(self, entity_emb, edge_index, n_entities, aug_kg_rate, mae_rate=0.1, edge_type=None, print_=False, return_logits=False):
         keep_rate = 1 - mae_rate
         head_keep_rate = aug_kg_rate
         tail_keep_rate = aug_kg_rate / (1-aug_kg_rate)
@@ -314,7 +314,8 @@ class AttnHGCN(nn.Module):
 
         edge_attn_logits = (query + key).sum(-1).detach()
         edge_attn_score = scatter_softmax(edge_attn_logits, head)
-        #normalization by head_node degree
+
+        # normalization by head_node degree
         norm = scatter_sum(torch.ones_like(head), head, dim=0, dim_size=entity_emb.shape[0])
         norm = torch.index_select(norm, 0, head)
         nedge_attn_score = edge_attn_score * norm
@@ -327,37 +328,39 @@ class AttnHGCN(nn.Module):
         head, tail = denoise_edge_index
         edge_attn_logits = edge_attn_logits[head]
 
-        # 以下至 end_80_ind = torch.where(torch.sum(head.unsqueeze(1) == end_80, dim=1))[0] 一行为计算头部节点（度在top20的节点）在图中的下标
-        # 合并两个张量列表
         if return_logits is False:
             entities = head
-            # 使用torch.bincount()函数计算每个值的度
+
+            """ get the indices of the head and tail node sets """
+            # computing head_node degree
             entity_degrees = torch.bincount(entities, minlength=n_entities)
 
-            top_20 = int(len(torch.unique(entities)) * head_keep_rate)
-            end_80 = int(len(entity_degrees) - top_20)
+            # divide the head and tail node number according to the degree of the head node.
+            top = int(len(torch.unique(entities)) * head_keep_rate)
+            end = int(len(entity_degrees) - top)
 
-            top_20_degree, top_20 = torch.topk(entity_degrees, top_20)
-            end_80_degree, end_80 = torch.topk(-1 * entity_degrees, end_80)
-            head_kg = top_20
-            tail_kg = end_80
+            # get the indices of the head and tail node sets
+            top_degree, top = torch.topk(entity_degrees, top)
+            end_degree, end = torch.topk(-1 * entity_degrees, end)
+            head_kg = top
+            tail_kg = end
             
-            top_20_ind = torch.where(torch.isin(head, top_20))[0]
-            end_80_ind = torch.where(torch.isin(head, end_80))[0]
-            scores_top20 = edge_attn_logits[top_20_ind]
-            """ prob based drop """
-            softmax_values_top20 = scatter_softmax(scores_top20, head[top_20_ind])
-            select_num = int(len(end_80_ind) * tail_keep_rate)
-            
-            if no_viewGen:
-                softmax_values_top20 = torch.ones_like(softmax_values_top20)
-            
-            pseudo_head_ind = torch.multinomial(softmax_values_top20, select_num, replacement=False)
-            pseudo_head_ind = top_20_ind[pseudo_head_ind]
-            # 使用布尔索引获取 A 中剩余的值
-            noselect_head_ind = torch.where(~torch.isin(top_20_ind, pseudo_head_ind))[0]
+            top_ind = torch.where(torch.isin(head, top))[0]
+            end_ind = torch.where(torch.isin(head, end))[0]
+            scores_top = edge_attn_logits[top_ind]
 
-            pseudo_ind = torch.cat([pseudo_head_ind, end_80_ind], dim=-1)
+            """ sampled the pseudo-tail graph by multinomial distribution sample """
+            # prob based drop
+            softmax_values_top = scatter_softmax(scores_top, head[top_ind])
+            select_num = int(len(end_ind) * tail_keep_rate)
+            
+            pseudo_head_ind = torch.multinomial(softmax_values_top, select_num, replacement=False)
+            pseudo_head_ind = top_ind[pseudo_head_ind]
+
+            # Use Boolean index to get the remaining values (i.e., the indices of pseudo-tail missing graph)
+            noselect_head_ind = torch.where(~torch.isin(top_ind, pseudo_head_ind))[0]
+
+            pseudo_ind = torch.cat([pseudo_head_ind, end_ind], dim=-1)
             pseudo_edge_type = edge_type[pseudo_ind]
             pseudo_head = head[pseudo_ind]
             pseudo_tail = tail[pseudo_ind]
@@ -374,10 +377,10 @@ class AttnHGCN(nn.Module):
                 self.logger.info("edge_attn_score std: {}".format(edge_attn_score.std()))
             return edge_attn_score, edge_attn_logits
             
-    @torch.no_grad() # SACL的forward中调用传入参数为True
-    def process_ui_graph(self, inter_edge, inter_edge_w, user_emb, item_emb, mae_rate, aug_ui_rate, is_return_neigh_emb=False, no_viewGen=False):
+    @torch.no_grad()
+    def process_ui_graph(self, inter_edge, inter_edge_w, user_emb, item_emb, mae_rate, aug_ui_rate, is_return_neigh_emb=False):
         n_node = self.n_users+self.n_items
-        # 去噪图
+        """ acquire the denoise graph """
         p_kg = (1-mae_rate)
         embs_u = user_emb[inter_edge[0]]
         quary_u = embs_u @ self.W_UI
@@ -387,6 +390,7 @@ class AttnHGCN(nn.Module):
         key_i = key_i * self.relation_emb[-1] 
         scores_ui = (quary_u + key_i).sum(-1)
         softmax_values_scores_ui = scatter_softmax(scores_ui, inter_edge[0])
+
         # normalization by head_node degree
         norm = scatter_sum(torch.ones_like(softmax_values_scores_ui), inter_edge[0], dim=0, dim_size=user_emb.shape[0])
         norm = torch.index_select(norm, 0, inter_edge[0])
@@ -397,53 +401,48 @@ class AttnHGCN(nn.Module):
         _, select_indeices = torch.topk(softmax_values_scores_ui, int(len(softmax_values_scores_ui) * p_kg), sorted=False)
         denoise_inter_edge, denoise_inter_edge_w = inter_edge[:,select_indeices], inter_edge_w[select_indeices]/p_kg
 
-        # 长尾增强图
+        """ acquire the long-tail augmentation graph """
         denoiseAdj = torch.sparse.FloatTensor(torch.stack([denoise_inter_edge[0], denoise_inter_edge[1]]), torch.ones_like(denoise_inter_edge[0]).cuda(),
                                              (n_node, n_node)).coalesce()
-        degrees = torch.sparse.sum(denoiseAdj, dim=1).to_dense().view(-1)[:self.n_users]  # 只获取用户的度
-        top_20 = int(len(degrees) * aug_ui_rate)
-        end_80 = int(len(degrees) - top_20)
-        top_20_degrees, top_20 = torch.topk(degrees, top_20)
-        end_80_degrees, end_80 = torch.topk(-1 * degrees, end_80)
-        head_ui, head_ui_degree = top_20, top_20_degrees
-        tail_ui, tail_ui_degree = end_80, end_80_degrees
+        degrees = torch.sparse.sum(denoiseAdj, dim=1).to_dense().view(-1)[:self.n_users]  # only acquire degree of the user nodes
+        top = int(len(degrees) * aug_ui_rate)
+        end = int(len(degrees) - top)
+        top_degrees, top = torch.topk(degrees, top)
+        end_degrees, end = torch.topk(-1 * degrees, end)
+        head_ui, head_ui_degree = top, top_degrees
+        tail_ui, tail_ui_degree = end, end_degrees
 
-        # 使用高级索引提取满足条件的元素的索引和值
-        top_20_ind = torch.where(torch.isin(denoise_inter_edge[0], top_20.unsqueeze(1)))[0]
-        end_80_ind = torch.where(torch.isin(denoise_inter_edge[0], end_80.unsqueeze(1)))[0]
+        top_ind = torch.where(torch.isin(denoise_inter_edge[0], top.unsqueeze(1)))[0]
+        end_ind = torch.where(torch.isin(denoise_inter_edge[0], end.unsqueeze(1)))[0]
 
-        top_20_ind, top_20_val = denoise_inter_edge[:, top_20_ind], denoise_inter_edge_w[top_20_ind]
-        end_80_ind, end_80_val = denoise_inter_edge[:, end_80_ind], denoise_inter_edge_w[end_80_ind]
+        top_ind, top_val = denoise_inter_edge[:, top_ind], denoise_inter_edge_w[top_ind]
+        end_ind, end_val = denoise_inter_edge[:, end_ind], denoise_inter_edge_w[end_ind]
 
-        embs_u_ = user_emb[top_20_ind[0]]
+        embs_u_ = user_emb[top_ind[0]]
         quary_u_ = embs_u_ @ self.W_UI
         quary_u_ = quary_u_ * self.relation_emb[-1] 
-        embs_i_ = item_emb[top_20_ind[1]]
+        embs_i_ = item_emb[top_ind[1]]
         key_i_ = embs_i_ @ self.W_UI
         key_i_ = key_i_ * self.relation_emb[-1] 
-        values_top20 = (quary_u_ + key_i_).sum(-1)
+        values_top = (quary_u_ + key_i_).sum(-1)
         
-        softmax_values_top20 = scatter_softmax(values_top20, top_20_ind[0])
+        softmax_values_top = scatter_softmax(values_top, top_ind[0])
         end_keep_rate = aug_ui_rate / (1-aug_ui_rate)
-        need_select_num = int(len(end_80_ind[0]) * end_keep_rate)
-        pseudo_keep_rate = need_select_num / len(top_20_val)
+        need_select_num = int(len(end_ind[0]) * end_keep_rate)
+        pseudo_keep_rate = need_select_num / len(top_val)
         
-        if no_viewGen:
-            softmax_values_top20 = torch.ones_like(softmax_values_top20)
-        
-        pseudo_head_ind = torch.multinomial(softmax_values_top20, need_select_num, replacement=False)
-        pseudo_head_indeices, pseudo_head_vals = top_20_ind[:,pseudo_head_ind], top_20_val[pseudo_head_ind] / pseudo_keep_rate
+        pseudo_head_ind = torch.multinomial(softmax_values_top, need_select_num, replacement=False)
+        pseudo_head_indeices, pseudo_head_vals = top_ind[:,pseudo_head_ind], top_val[pseudo_head_ind] / pseudo_keep_rate
 
-        pseudo_inter_edge = torch.cat((pseudo_head_indeices, end_80_ind), dim=1)
-        pseudo_inter_edge_w = torch.cat([pseudo_head_vals, end_80_val])
+        pseudo_inter_edge = torch.cat((pseudo_head_indeices, end_ind), dim=1)
+        pseudo_inter_edge_w = torch.cat([pseudo_head_vals, end_val])
         pseudoAdj = torch.sparse.FloatTensor(torch.stack([pseudo_inter_edge[0], pseudo_inter_edge[1]]), torch.ones_like(pseudo_inter_edge[0]).cuda(),
                                              (n_node, n_node)).coalesce()
-        pseudo_degrees = torch.sparse.sum(pseudoAdj, dim=1).to_dense().view(-1)[:self.n_users]  # 只获取用户的度
+        pseudo_degrees = torch.sparse.sum(pseudoAdj, dim=1).to_dense().view(-1)[:self.n_users]  # only acquire degree of the user nodes
 
-        # 找到 A 中的值在 B 中不存在的值的坐标
-        top_20_i = torch.arange(len(top_20_ind[0])).cuda()
-        noselect_pseudo_ind = torch.where(~torch.isin(top_20_i, pseudo_head_ind))[0]
-        noselect_inter_edge, noselect_inter_edge_w = top_20_ind[:,noselect_pseudo_ind], top_20_val[noselect_pseudo_ind] / (1 - pseudo_keep_rate)
+        top_i = torch.arange(len(top_ind[0])).cuda()
+        noselect_pseudo_ind = torch.where(~torch.isin(top_i, pseudo_head_ind))[0]
+        noselect_inter_edge, noselect_inter_edge_w = top_ind[:,noselect_pseudo_ind], top_val[noselect_pseudo_ind] / (1 - pseudo_keep_rate)
 
         return denoise_inter_edge, denoise_inter_edge_w, pseudo_inter_edge, pseudo_inter_edge_w, noselect_inter_edge, \
                noselect_inter_edge_w, head_ui, tail_ui, pseudo_degrees
