@@ -30,7 +30,7 @@ class Contrast(torch.nn.Module):
 
     def loss(self, z1: torch.Tensor, z2: torch.Tensor):
         f = lambda x: torch.exp(x / self.tau)
-        between_sim = f(self.self_sim(z1, z2)) # 获得z1和z2之间的相似度
+        between_sim = f(self.self_sim(z1, z2))
         rand_item = torch.randperm(z1.shape[0])
         neg_sim = f(self.self_sim(z1, z2[rand_item])) + f(self.self_sim(z2, z1[rand_item]))
 
