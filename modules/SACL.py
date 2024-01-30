@@ -240,7 +240,7 @@ class SACL(nn.Module):
                      "pseudo_kg_no_aug_embs":pseudo_kg_no_aug_embs, "pseudo_ui_no_aug_embs":pseudo_kg_no_aug_embs,
                      "head_ui":head_ui, "tail_ui":tail_ui, "head_kg":head_kg, "tail_kg":tail_kg}
 
-        """ 去噪图学习到的嵌入和长尾增强图学习到的嵌入的 KL loss """
+        """ KL loss """
         kl_calc_loss_ui_emb_1 = kl_calc_loss_ui_embs["pseudo_ui_embs"][:self.n_users][head_ui]
         kl_calc_loss_ui_emb_2 = kl_calc_loss_ui_embs["denoise_ui_embs"][:self.n_users][head_ui]
         kl_calc_loss_entity_emb_1 = kl_calc_loss_kg_embs["pseudo_kg_emb"][head_kg]
@@ -426,8 +426,6 @@ def train_disc(embed_model, disc_model, optimizer_D,
         e_emb_h, e_emb_t, e_emb_nt = embs_dict['entity_res_emb'], embs_dict['pseudoentity_entity_res_emb'], embs_dict['pseudo_kg_no_aug_embs']
         head_ui, tail_ui, head_kg, tail_kg = embs_dict['head_ui'], embs_dict['tail_ui'], embs_dict['head_kg'], embs_dict['tail_kg']
 
-    # 头部点的范围是否缩小到仅 user 节点中
-    # 一些可调节的超参，暂时放在这里
     noise_eps = 0.1
     lambda_gp = 1.0
     if is_ui:
@@ -455,7 +453,7 @@ def train_disc(embed_model, disc_model, optimizer_D,
             noise_eps = noise_eps * rate
         elif annealing_type == 2:
             # first fast and then slow, the concave function decreases
-            annealing_stop_rate = 0.6  # 超参数，可调节
+            annealing_stop_rate = 0.6  # hyperparameter
             annealing_rate = (0.01 ** (1 / step_num / annealing_stop_rate))
             noise_eps = noise_eps * (annealing_rate ** step)
         else:
