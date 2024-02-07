@@ -12,13 +12,13 @@ Self-Augmented Contrastive Learning for Knowledge-aware Recommendation (SACL) is
 
 The code has been tested running under Python 3.8.0. The required packages are as follows:
 
-- pytorch == 2.1.0
+- pytorch == 2.2.0
 - networkx == 2.5.1
-- numpy == 1.22.4
-- pandas == 1.4.3
-- scikit-learn == 1.1.1
-- scipy == 1.7.0
-- torch-cluster == 1.6.2
+- numpy == 1.26.3
+- scikit-learn == 1.4.1
+- scipy == 1.12.0
+- torch-cluster == 1.6.3
+- torch-geometric == 2.4.0
 - torch-scatter == 2.1.2
 - torch-sparse == 0.6.18
 
