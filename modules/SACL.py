@@ -365,12 +365,12 @@ class SACL(nn.Module):
         item_emb = entity_emb[:self.n_items]
 
         denoise_inter_edge, denoise_inter_edge_w, pseudo_inter_edge, pseudo_inter_edge_w, noselect_inter_edge, noselect_inter_edge_w, head_ui, tail_ui, ui_degrees \
-            = self.gcn.process_ui_graph(self.inter_edge, self.inter_edge_w, user_emb, item_emb, self.mae_rate, self.aug_ui_rate, is_return_neigh_emb=True)
+            = self.gcn.process_ui_graph(self.inter_edge, self.inter_edge_w, user_emb, item_emb, 0, self.aug_ui_rate, is_return_neigh_emb=True)
         
                
         edge_attn_score, pseudo_edge_index, pseudo_edge_type, head_kg, tail_kg, kg_degrees, \
         noselect_kg_index, noselect_kg_edge_type, denoise_edge_index, denoise_edge_type = self.gcn.norm_attn_computer(entity_emb,
-        self.edge_index, self.n_entities, self.aug_kg_rate, self.mae_rate, self.edge_type)
+        self.edge_index, self.n_entities, self.aug_kg_rate, 0, self.edge_type)
         
         aug_entity_res_emb, denoise_entity_res_emb, _, _, _, _ \
             = self.gcn.forward_kg(entity_emb, denoise_edge_index, denoise_edge_type, pseudo_edge_index, pseudo_edge_type,
