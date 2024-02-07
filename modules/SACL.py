@@ -30,7 +30,7 @@ def _edge_sampling(edge_index, edge_type, samp_rate=0.5):
     n_edges = edge_index.shape[1]
 
     random_indices = np.random.choice(
-        n_edges, size=int(n_edges * samp_rate), replace=False)
+        n_edges, size=int(n_edges * samp_rate), replace=False)#replace为false代表不允许重复采样
 
     return edge_index[:, random_indices], edge_type[random_indices]
 
@@ -115,65 +115,101 @@ class SACL(nn.Module):
         self.kg_dropout = args_config.kg_dropout
         self.ui_dropout = args_config.ui_dropout
 
+        # 知识端局部对比学习参数
+        self.kg_cl_reg = args_config.kg_cl_reg
+        self.kg_cl_tau = args_config.kg_cl_tau
+
         self.dataset = args_config.dataset
 
         self.samp_func = "torch"
 
-        """ the hyperparameter setting for different datasets """
+        """ 针对不同数据集的超参数设置 """
         if args_config.dataset == 'music':
+            # 消融实验
+            self.no_uiAug = args_config.no_uiAug
+            self.no_kgAug = args_config.no_kgAug
+            self.no_cross_cl = args_config.no_cross_cl
+            self.no_viewGen = args_config.no_viewGen
+            self.no_denoise = args_config.no_denoise
+            
+            # 跨视图（ui图和kg）对比学习超参（第四个要调的）
+            self.cross_cl_reg = 0.01        # 跨视图对比学习权重
+            self.cross_cl_tau = 0.1         # 跨视图对比学习温度系数
 
-            """ the hyperparameters for cross-view contrastive learning """
-            self.cross_cl_reg = 0.01        # cross-view contrastive learning weight
-            self.cross_cl_tau = 0.1         # cross-view contrastive learning temperature
+            # 学习率和l2正则化权重（第一个要调的）
+            self.l2 = 1e-4                  # l2正则化系数
 
-            """ l2 regularization weight """
-            self.l2 = 1e-4
-
-            """ the layer number for GNN """
+            # GNN层数（第二个要调的）
             self.context_hops = 2
 
-            """ denoising ratio """
-            self.mae_rate = 0.05
+            # 去噪图去噪比例（第三个要调的）
+            self.mae_rate = 0.1
 
-            """ the hyperparameters for Knowledge transfer module """
+            # 知识转移模块权重（第五个要调的）
             self.kl_eps = 0.1
             self.mi_eps = 0.1
             
-            """ the head node rates for long-tail augmentation """
-            self.aug_ui_rate = 0.8		# the user-item graph
-            self.aug_kg_rate = 0.2      # the knowledge graph
+            # 长尾增强时 head部节点 比率
+            self.aug_ui_rate = 0.8		# ui图
+            self.aug_kg_rate = 0.2             # kg图
  
         elif args_config.dataset == 'book':
+            # 跨视图（ui图和kg）对比学习超参
             self.cross_cl_reg = 0.01
             self.cross_cl_tau = 0.1
 
+            # l2正则化权重
             self.l2 = 1e-4
+            
+            # 消融实验
+            self.no_uiAug = args_config.no_uiAug
+            self.no_kgAug = args_config.no_kgAug
+            self.no_cross_cl = args_config.no_cross_cl
+            self.no_viewGen = args_config.no_viewGen
+            self.no_denoise = args_config.no_denoise
 
+            # GNN层数
             self.context_hops = 1
 
+            # 去噪图去噪比例
             self.mae_rate = 0.1
 
-            self.kl_eps = 0.1
-            self.mi_eps = 0.1
-
-            self.aug_ui_rate = 0.2
-            self.aug_kg_rate = 0.8
+            # 知识转移模块权重
+            self.kl_eps = 0.1    # 去噪图及长尾增强图学习到的嵌入表示的KL分布优化权重
+            self.mi_eps = 0.1       # 知识转移模块为尾实体增强的表示与原表示的误差权重
+            
+            # 长尾增强时 head部节点 比率
+            self.aug_ui_rate = 0.2		# ui图
+            self.aug_kg_rate = 0.8              # kg图
 
         elif args_config.dataset == 'movie':
+            # 消融实验
+            self.no_uiAug = args_config.no_uiAug
+            self.no_kgAug = args_config.no_kgAug
+            self.no_cross_cl = args_config.no_cross_cl
+            self.no_viewGen = args_config.no_viewGen
+            self.no_denoise = args_config.no_denoise
+        
+            # 跨视图（ui图和kg）对比学习超参
             self.cross_cl_reg = 0.01
             self.cross_cl_tau = 0.9
-
+            
+            # GNN层数
             self.context_hops = 2
-
+            
+            # 去噪图去噪比例
             self.mae_rate = 0.1
 
+            # l2正则化权重
             self.l2 = 1e-4
 
+            # 知识转移模块权重
             self.kl_eps = 0.1
             self.mi_eps = 0.1
-
-            self.aug_ui_rate = 0.8
-            self.aug_kg_rate = 0.2
+            
+            # 长尾增强时 head部节点 比率
+            self.aug_ui_rate = 0.8		# ui图
+            self.aug_kg_rate = 0.2              # kg图
 
         if hp_dict is not None:
             for k,v in hp_dict.items():
@@ -202,25 +238,31 @@ class SACL(nn.Module):
         user_emb = self.all_embed[:self.n_users, :]
         entity_emb = self.all_embed[self.n_users:, :]
         item_emb = entity_emb[:self.n_items]
+        
+        # 去噪的消融
+        if self.no_denoise:
+            self.mae_rate = 0
+        
+        # 交互图 dropout 操作
+        if self.ui_dropout:
+            inter_edge, inter_edge_w = _sparse_dropout(
+                self.inter_edge, self.inter_edge_w, self.node_dropout_rate)
+        else:
+            inter_edge, inter_edge_w = self.inter_edge, self.inter_edge_w
 
-
-        """ 4.1	Automatic Normalization Method for Long-Tail Node """
-        """ graph dropout trick for the user-item graph """
-        inter_edge, inter_edge_w = _sparse_dropout(
-            self.inter_edge, self.inter_edge_w, self.node_dropout_rate)
-
-        """ graph denoise and long-tail augmentation for user-item graph """
         denoise_inter_edge, denoise_inter_edge_w, pseudo_inter_edge, pseudo_inter_edge_w, noselect_inter_edge, noselect_inter_edge_w, head_ui, tail_ui, ui_degrees \
-            = self.gcn.process_ui_graph(inter_edge, inter_edge_w, user_emb, item_emb, self.mae_rate, self.aug_ui_rate, is_return_neigh_emb=True)
+            = self.gcn.process_ui_graph(inter_edge, inter_edge_w, user_emb, item_emb, self.mae_rate, self.aug_ui_rate, is_return_neigh_emb=True, no_viewGen=self.no_viewGen)
 
-        """ graph dropout trick for the knowledge graph """
-        edge_index, edge_type = _relation_aware_edge_sampling(
-            self.edge_index, self.edge_type, self.n_relations, self.node_dropout_rate)
+        # 知识图谱 dropout 操作
+        if self.kg_dropout:
+            edge_index, edge_type = _relation_aware_edge_sampling(
+                self.edge_index, self.edge_type, self.n_relations, self.node_dropout_rate)
+        else:
+            edge_index, edge_type = self.edge_index, self.edge_type
 
-        """ graph denoise and long-tail augmentation for knowledge graph """
         edge_attn_score, pseudo_edge_index, pseudo_edge_type, head_kg, tail_kg, kg_degrees, \
         noselect_kg_index, noselect_kg_edge_type, denoise_edge_index, denoise_edge_type = self.gcn.norm_attn_computer(entity_emb,
-        edge_index, self.n_entities, self.aug_kg_rate, self.mae_rate, edge_type, print_=False, return_logits=False)
+        edge_index, self.n_entities, self.aug_kg_rate, self.mae_rate, edge_type, print_=False, return_logits=False, no_viewGen=self.no_viewGen)
 
 
         aug_entity_res_emb, denoise_entity_res_emb, pseudo_entity_res_emb, pseudo_kg_no_aug_embs, kl_calc_loss_kg_embs, mi_calc_loss_kg_embs \
@@ -231,16 +273,20 @@ class SACL(nn.Module):
         aug_ui_res_embs, denoise_ui_res_embs, pseudo_ui_res_embs, pseudo_ui_no_aug_embs, kl_calc_loss_ui_embs, mi_calc_loss_ui_embs = self.gcn.forward_ui(
             embeddings, denoise_inter_edge, denoise_inter_edge_w, pseudo_inter_edge, pseudo_inter_edge_w,
             noselect_inter_edge, noselect_inter_edge_w, head_ui, tail_ui, ui_degrees)
-
+            
+        if self.no_uiAug:
+            aug_ui_res_embs = denoise_ui_res_embs
+        if self.no_kgAug:
+            aug_entity_res_emb = denoise_entity_res_emb
         aug_user_emb, aug_item_emb = aug_ui_res_embs[:self.n_users], aug_ui_res_embs[self.n_users:]
 
-        """ embedding set for generative adversarial optimization  1、aug_embs: embedding representations for the origin graph 2、pseudo_embs: long-tail augment embedding representations for the pseudo-tail graph """
+        """ 生成对抗网络优化使用的嵌入集  1、aug_embs 就是原始数据的嵌入表示 2、pseudo_embs 就是增强尾节点（对头部节点进行drop）得到的视图进行增强的嵌入表示 """
         embs_dict = {"ui_res_embs":denoise_ui_res_embs, "pseudo_ui_res_embs":pseudo_ui_res_embs,
                      "entity_res_emb":denoise_entity_res_emb, "pseudoentity_entity_res_emb":pseudo_entity_res_emb,
                      "pseudo_kg_no_aug_embs":pseudo_kg_no_aug_embs, "pseudo_ui_no_aug_embs":pseudo_kg_no_aug_embs,
                      "head_ui":head_ui, "tail_ui":tail_ui, "head_kg":head_kg, "tail_kg":tail_kg}
 
-        """ KL loss """
+        """ 去噪图学习到的嵌入和长尾增强图学习到的嵌入的 KL loss """
         kl_calc_loss_ui_emb_1 = kl_calc_loss_ui_embs["pseudo_ui_embs"][:self.n_users][head_ui]
         kl_calc_loss_ui_emb_2 = kl_calc_loss_ui_embs["denoise_ui_embs"][:self.n_users][head_ui]
         kl_calc_loss_entity_emb_1 = kl_calc_loss_kg_embs["pseudo_kg_emb"][head_kg]
@@ -248,44 +294,41 @@ class SACL(nn.Module):
         
         loss_kl_corr_user, loss_kl_corr_entity = torch.tensor(0.0), torch.tensor(0.0)
         # ui KL
-        loss_kl_corr_user = torch.nn.functional.kl_div(
-            kl_calc_loss_ui_emb_1.log_softmax(dim=-1),
-            kl_calc_loss_ui_emb_2.softmax(dim=-1),
-            reduction='batchmean',
-            log_target=False)
+        if self.no_uiAug is False:
+            loss_kl_corr_user = torch.nn.functional.kl_div(
+                kl_calc_loss_ui_emb_1.log_softmax(dim=-1),
+                kl_calc_loss_ui_emb_2.softmax(dim=-1),
+                reduction='batchmean',
+                log_target=False)
                 
         # kg KL
-        loss_kl_corr_entity = torch.nn.functional.kl_div(
-            kl_calc_loss_entity_emb_1.log_softmax(dim=-1),
-            kl_calc_loss_entity_emb_2.softmax(dim=-1),
-            reduction='batchmean', log_target=False)
+        if self.no_kgAug is False:
+            loss_kl_corr_entity = torch.nn.functional.kl_div(
+                kl_calc_loss_entity_emb_1.log_softmax(dim=-1),
+                kl_calc_loss_entity_emb_2.softmax(dim=-1),
+                reduction='batchmean', log_target=False)
                     
         kl_loss = loss_kl_corr_user * self.kl_eps + loss_kl_corr_entity * self.kl_eps
  
-        """ Knowledge Trans Module Loss """
+        """ 计算 Knowledge Trans Module 中预测邻域缺失信息的 Loss """
         missing_loss = torch.tensor(0.0)
-
-        #（1） user-item graph
-        missing_loss_user_embs = mi_calc_loss_ui_embs["missing_loss_ui_embs"]
-        mask_head = head_ui
-        for embs in missing_loss_user_embs:
-            m_regularizer_ui = torch.mean(torch.norm(embs[mask_head], dim=1))
-            missing_loss = missing_loss + m_regularizer_ui
-
-        #（1） knowledge graph
-        missing_loss_entity_embs = mi_calc_loss_kg_embs["missing_loss_kg_embs"]
-        mask_head = head_kg
-        for embs in missing_loss_entity_embs:
-            m_regularizer_kg = torch.mean(torch.norm(embs[mask_head], dim=1))
-            missing_loss = missing_loss + m_regularizer_kg
-        missing_loss = missing_loss * self.mi_eps
-
-
-        """ 4.2	Cross-View Contrastive Learning with Self-Augmented Views """
-        cross_cl_loss = torch.tensor(0.0)
-        cross_cl_loss =self.cross_cl_reg * self.contrast_fn(aug_entity_res_emb, aug_item_emb)
-
-        """ 4.3	Relation-aware Heterogeneous Knowledge Aggregation """
+        if self.no_uiAug is False:
+            #（1） ui
+            missing_loss_user_embs = mi_calc_loss_ui_embs["missing_loss_ui_embs"]
+            mask_head = head_ui       
+            for embs in missing_loss_user_embs:
+                m_regularizer_ui = torch.mean(torch.norm(embs[mask_head], dim=1))
+                missing_loss = missing_loss + m_regularizer_ui
+                
+        if self.no_kgAug is False:
+            #（2） KG
+            missing_loss_entity_embs = mi_calc_loss_kg_embs["missing_loss_kg_embs"]
+            mask_head = head_kg       
+            for embs in missing_loss_entity_embs:
+                m_regularizer_kg = torch.mean(torch.norm(embs[mask_head], dim=1))
+                missing_loss = missing_loss + m_regularizer_kg
+            missing_loss = missing_loss * self.mi_eps
+        """ ckg 视图编码  依旧是使用 denoise图 进行编码 """
         entity_gcn_emb, user_gcn_emb = self.gcn(aug_user_emb,
                                                 aug_entity_res_emb,
                                                 denoise_edge_index,
@@ -293,8 +336,12 @@ class SACL(nn.Module):
                                                 denoise_inter_edge,
                                                 denoise_inter_edge_w,
                                                 mess_dropout=self.mess_dropout)
+        
+        cross_cl_loss = torch.tensor(0.0)
+        if self.no_cross_cl is False:
+            cross_cl_loss = self.cross_cl_reg * self.contrast_fn(aug_entity_res_emb, aug_item_emb)
 
-        """ final_embedding """
+        # 最终的实体嵌入和用户嵌入是全局级别的 user-item-entity 图编码得到的嵌入和 局部级别的交互图和知识图谱编码得到的嵌入的拼接
         entity_gcn_emb = torch.cat([entity_gcn_emb, aug_item_emb], dim=1)
         user_gcn_emb = torch.cat([user_gcn_emb, aug_user_emb], dim=1)
 
@@ -303,10 +350,10 @@ class SACL(nn.Module):
 
         loss = torch.tensor(0.0)
         bpr_loss, rec_loss, reg_loss,scores = self.create_bpr_loss(u_e, pos_e, labels)
-        loss = loss + bpr_loss              # main task，cross entropy loss
-        loss = loss + kl_loss               # KL loss for long-tail augmentation
-        loss = loss + missing_loss          # prediction loss for the knowledge transfer function
-        loss = loss + cross_cl_loss         # cross-view contrastive learning loss
+        loss = loss + bpr_loss              # 主任务，交叉熵
+        loss = loss + kl_loss               # 训练期间使用长尾增强图（denoise 图基础上的长尾增强）编码得到的分布，和原始图（denoise 图）的分布的KL损失
+        loss = loss + missing_loss          # 长尾增强图的预测损失，计算方式是最小化长尾增强图中编码得到的 head 节点嵌入表示 与原denoise图内 head节点的嵌入表示
+        loss = loss + cross_cl_loss         # 交互图和知识图谱跨视图对比损失，目的是对齐协作信号和kg信号
 
         loss_dict = {
             "total_loss": loss.item(),
@@ -354,10 +401,24 @@ class SACL(nn.Module):
 
     def _get_edges(self, graph):
         graph_tensor = torch.tensor(list(graph.edges))
-        index = graph_tensor[:, :-1]  # [-1, 2]
-        type = graph_tensor[:, -1]  # [-1, 1]
 
+        #提取出前两列，是边的位置信息
+        index = graph_tensor[:, :-1]  # [-1, 2]
+        #提取出最后一列，是边的类型信息
+        type = graph_tensor[:, -1]  # [-1, 1]
         return index.t().long().to(self.device), type.long().to(self.device)
+
+    def center_embs(self, denoiseAdj, embeds):
+        order = torch.sparse.sum(denoiseAdj, dim=-1).to_dense().view([-1, 1])
+        fstEmbeds = torch.spmm(denoiseAdj, embeds) - embeds
+        fstNum = order  # fstNum是一阶邻居节点数量
+        scdEmbeds = (torch.spmm(denoiseAdj, fstEmbeds) - fstEmbeds) - order * embeds
+        scdNum = (torch.spmm(denoiseAdj, fstNum) - fstNum) - order
+        subgraphEmbeds = (fstEmbeds + scdEmbeds) / (fstNum + scdNum + 1e-8)
+
+        subgraphEmbeds = F.normalize(subgraphEmbeds, p=2)
+        centerEmbeds = F.normalize(embeds, p=2)
+        return centerEmbeds, subgraphEmbeds
 
     def generate(self,):
         user_emb = self.all_embed[:self.n_users, :]
@@ -380,8 +441,10 @@ class SACL(nn.Module):
         aug_ui_res_embs, denoise_ui_res_embs, _, _, _, _ = self.gcn.forward_ui(
             embeddings, denoise_inter_edge, denoise_inter_edge_w, pseudo_inter_edge, pseudo_inter_edge_w,
             noselect_inter_edge, noselect_inter_edge_w, head_ui, tail_ui, ui_degrees)
-        aug_ui_res_embs = denoise_ui_res_embs
-        aug_entity_res_emb = denoise_entity_res_emb
+        if self.no_uiAug:
+            aug_ui_res_embs = denoise_ui_res_embs
+        if self.no_kgAug:
+            aug_entity_res_emb = denoise_entity_res_emb
                 
         aug_user_emb, aug_item_emb = aug_ui_res_embs[:self.n_users], aug_ui_res_embs[self.n_users:]
 
@@ -421,11 +484,13 @@ def train_disc(embed_model, disc_model, optimizer_D,
         p.requires_grad = True
     with torch.no_grad():
         _, _, embs_dict = embed_model(step, batch)
-        # u_emb: the embedding representation obtained by encoding the user-item graph， i_emb: the embedding representation obtained by encoding the knowledge graph
+        # u_emb: u-i图编码得到的， i_emb: KG编码得到的
         u_emb_h, u_emb_t, u_emb_nt = embs_dict['ui_res_embs'], embs_dict['pseudo_ui_res_embs'], embs_dict['pseudo_ui_no_aug_embs']
         e_emb_h, e_emb_t, e_emb_nt = embs_dict['entity_res_emb'], embs_dict['pseudoentity_entity_res_emb'], embs_dict['pseudo_kg_no_aug_embs']
         head_ui, tail_ui, head_kg, tail_kg = embs_dict['head_ui'], embs_dict['tail_ui'], embs_dict['head_kg'], embs_dict['tail_kg']
 
+    # 头部点的范围是否缩小到仅 user 节点中
+    # 一些可调节的超参，暂时放在这里
     noise_eps = 0.1
     lambda_gp = 1.0
     if is_ui:
@@ -443,21 +508,21 @@ def train_disc(embed_model, disc_model, optimizer_D,
 
     if True:
         if annealing_type == 0:
-            # no annealing
+            # 不做退火
             noise_eps = noise_eps
         elif annealing_type == 1:
-            # uniform straight descent
-            annealing_stop_rate = 0.7  # hyperparameter
+            # 均匀直线下降
+            annealing_stop_rate = 0.7  # 超参数，可调节
             rate = 1 - min(step /
                            (annealing_stop_rate * step_num), 1.0)
             noise_eps = noise_eps * rate
         elif annealing_type == 2:
-            # first fast and then slow, the concave function decreases
-            annealing_stop_rate = 0.6  # hyperparameter
+            # 先快后慢，凹函数下降
+            annealing_stop_rate = 0.6  # 超参数，可调节
             annealing_rate = (0.01 ** (1 / step_num / annealing_stop_rate))
             noise_eps = noise_eps * (annealing_rate ** step)
         else:
-            # added noise = False
+            # 不加噪声
             noise_eps = 0.0
 
         def exec_perturbed(x, noise_eps):
@@ -466,7 +531,7 @@ def train_disc(embed_model, disc_model, optimizer_D,
                                                 dim=-1) * noise_eps
             return x
 
-        # added noise for real、fake
+        # 对 real、fake 数据加噪声
         all_head_emb_h = exec_perturbed(all_head_emb_h, noise_eps=noise_eps)
         all_emb_t = exec_perturbed(all_emb_t, noise_eps=noise_eps)
 
@@ -478,9 +543,9 @@ def train_disc(embed_model, disc_model, optimizer_D,
 
     def get_select_idx(max_value, select_num, strategy='uniform'):
         """
-        max_value: sampled range in [0, max_value)
-        select_num: sampled num
-        strategy: uniform or random
+        max_value: 在 [0, max_value) 之间采样
+        select_num: 采样数目
+        strategy: 采样策略，uniform 均极度均匀，random 为随机采样
         """
         select_idx = None
         if strategy == 'uniform':
@@ -582,6 +647,7 @@ def train_gen(embed_model, optimizer, disc_model, disc_pseudo_real, step, batch,
         p.requires_grad = False  # to avoid computation
 
     _, _, embs_dict = embed_model(step, batch)
+    # u_emb: u-i图编码得到的， i_emb: KG编码得到的
     u_emb_h, u_emb_t, u_emb_nt = embs_dict['ui_res_embs'], embs_dict['pseudo_ui_res_embs'], embs_dict[
         'pseudo_ui_no_aug_embs']
     e_emb_h, e_emb_t, e_emb_nt = embs_dict['entity_res_emb'], embs_dict['pseudoentity_entity_res_emb'], embs_dict[
@@ -599,7 +665,7 @@ def train_gen(embed_model, optimizer, disc_model, disc_pseudo_real, step, batch,
     all_emb_t = emb_t
 
     prob_t = disc_model(all_emb_t)
-    L_disc1 = -prob_t.mean() * 0.1  # hyperparameters
+    L_disc1 = -prob_t.mean() * 0.1  # 超参数，可调节
 
     # disc 2
     all_emb_nt = u_emb_nt[head]
