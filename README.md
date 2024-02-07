@@ -5,7 +5,7 @@ This is the PyTorch Implementation for the paper: Self-Augmented Contrastive Lea
 ## Introduction
 
 Self-Augmented Contrastive Learning for Knowledge-aware Recommendation (SACL) is a knowledge-aware recommendation framework, which can be used to extract unbiased graph structures, and uses the patterns of association between the head and tail nodes in an unbiased graph to normalize the representations of the tail nodes. It aims to facilitate unbiased and distribution-agnostic knowledge-aware contrastive learning across views.
-![Uploading image.png…]()
+![Image text](https://github.com/bangzuo/SACL/blob/main/SACL%E6%A8%A1%E5%9E%8B%E6%A1%86%E6%9E%B6%E5%9B%BE.png)
 
 
 ```
