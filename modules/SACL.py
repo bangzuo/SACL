@@ -222,7 +222,6 @@ class SACL(nn.Module):
         noselect_kg_index, noselect_kg_edge_type, denoise_edge_index, denoise_edge_type = self.gcn.norm_attn_computer(entity_emb,
         edge_index, self.n_entities, self.aug_kg_rate, self.mae_rate, edge_type, print_=False, return_logits=False)
 
-
         aug_entity_res_emb, denoise_entity_res_emb, pseudo_entity_res_emb, pseudo_kg_no_aug_embs, kl_calc_loss_kg_embs, mi_calc_loss_kg_embs \
             = self.gcn.forward_kg(entity_emb, denoise_edge_index, denoise_edge_type, pseudo_edge_index, pseudo_edge_type,
                                   noselect_kg_index, noselect_kg_edge_type, head_kg, tail_kg, kg_degrees)
@@ -272,7 +271,7 @@ class SACL(nn.Module):
             m_regularizer_ui = torch.mean(torch.norm(embs[mask_head], dim=1))
             missing_loss = missing_loss + m_regularizer_ui
 
-        #（1） knowledge graph
+        #（2） knowledge graph
         missing_loss_entity_embs = mi_calc_loss_kg_embs["missing_loss_kg_embs"]
         mask_head = head_kg
         for embs in missing_loss_entity_embs:
@@ -285,6 +284,7 @@ class SACL(nn.Module):
         cross_cl_loss = torch.tensor(0.0)
         cross_cl_loss =self.cross_cl_reg * self.contrast_fn(aug_entity_res_emb, aug_item_emb)
 
+        
         """ 4.3	Relation-aware Heterogeneous Knowledge Aggregation """
         entity_gcn_emb, user_gcn_emb = self.gcn(aug_user_emb,
                                                 aug_entity_res_emb,
@@ -294,6 +294,8 @@ class SACL(nn.Module):
                                                 denoise_inter_edge_w,
                                                 mess_dropout=self.mess_dropout)
 
+
+        """ 4.4	Model Prediction and Optimization """
         """ final_embedding """
         entity_gcn_emb = torch.cat([entity_gcn_emb, aug_item_emb], dim=1)
         user_gcn_emb = torch.cat([user_gcn_emb, aug_user_emb], dim=1)
