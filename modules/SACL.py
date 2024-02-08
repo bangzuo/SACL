@@ -324,26 +324,6 @@ class SACL(nn.Module):
         }
 
         return loss, loss_dict, embs_dict
-
-    def _make_torch_adj_one(self,inter_edge):
-        values = torch.ones(inter_edge.shape[1])
-        mat = sp.coo_matrix((values.cpu().numpy(), (inter_edge[0].cpu().numpy(), inter_edge[1].cpu().numpy())), \
-                            shape=(self.n_users,self.n_items))
-        a = sp.csr_matrix((self.n_users, self.n_users)) 
-        b = sp.csr_matrix((self.n_items, self.n_items))
-        mat = sp.vstack([sp.hstack([a, mat]), sp.hstack([mat.transpose(), b])]) 
-        mat = (mat != 0) * 1.0 
-        mat = (mat + sp.eye(mat.shape[0])) * 1.0
-        degree = np.array(mat.sum(axis=-1))
-        dInvSqrt = np.reshape(np.power(degree, -0.5), [-1])
-        dInvSqrt[np.isinf(dInvSqrt)] = 0.0
-        dInvSqrtMat = sp.diags(dInvSqrt)
-        mat = mat.dot(dInvSqrtMat).transpose().dot(dInvSqrtMat).tocoo()
-        idxs = torch.from_numpy(np.vstack([mat.row, mat.col]).astype(np.int64))
-        vals = torch.from_numpy(mat.data.astype(np.float32))
-        shape = torch.Size(mat.shape)
-
-        return torch.sparse.FloatTensor(idxs, vals, shape).cuda()
     
     def _init_weight(self):
         initializer = nn.init.xavier_uniform_
@@ -354,10 +334,6 @@ class SACL(nn.Module):
         i = torch.LongTensor([coo.row, coo.col])
         v = torch.from_numpy(coo.data).float()
         return i.to(self.device), v.to(self.device)
-
-    def _get_indices(self, X):
-        coo = X.tocoo()
-        return torch.LongTensor([coo.row, coo.col]).t()
 
     def _get_edges(self, graph):
         graph_tensor = torch.tensor(list(graph.edges))
@@ -396,7 +372,7 @@ class SACL(nn.Module):
                                                 denoise_edge_type,
                                                 denoise_inter_edge,
                                                 denoise_inter_edge_w,
-                                                mess_dropout=self.mess_dropout)
+                                                mess_dropout=False)
 
         entity_gcn_emb = torch.cat([entity_gcn_emb, aug_item_emb], dim=1)
         user_gcn_emb = torch.cat([user_gcn_emb, aug_user_emb], dim=1)
