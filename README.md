@@ -32,19 +32,19 @@ The instruction of commands has been clearly stated in the codes (see the parser
 - Last-fm dataset
 
 ```
-python main.py --dataset music --lr 0.0001 --cross_cl_tau 0.1 --context_hops 2 --mae_rate 0.005 --aug_ui_rate 0.8  --aug_kg_rate 0.2
+python main.py --dataset music --lr 0.0001 --cross_cl_tau 0.1 --context_hops 2 --mae_rate 0.05 --aug_ui_rate 0.8  --aug_kg_rate 0.2
 ```
 
 - Book-Crossing dataset
 
 ```
-python main.py --dataset book --lr 0.0001 --cross_cl_tau 0.1 --context_hops 1 --mae_rate 0.01 --aug_ui_rate 0.2 --aug_kg_rate 0.8
+python main.py --dataset book --lr 0.0001 --cross_cl_tau 0.1 --context_hops 1 --mae_rate 0.1 --aug_ui_rate 0.2 --aug_kg_rate 0.8
 ```
 
 - MovieLens dataset
 
 ```
-python main.py --dataset movie --lr 0.0001 --cross_cl_tau 0.9 --context_hops 2 --mae_rate 0.01 --aug_ui_rate 0.8 --aug_kg_rate 0.2
+python main.py --dataset movie --lr 0.0001 --cross_cl_tau 0.9 --context_hops 2 --mae_rate 0.1 --aug_ui_rate 0.8 --aug_kg_rate 0.2
 ```
 
 
