@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument('--test_flag', nargs='?', default='part',
                         help='Specify the test type from {part, full}, indicating whether the reference is done in mini-batch')
 
-    parser.add_argument('--mae_rate', type=int, default=0.1, help='mask size for MAE')
+    parser.add_argument('--mae_rate', type=float, default=0.1, help='mask size for MAE')
     parser.add_argument('--kg_dropout', type=bool, default=True, help='kg dropout')
     parser.add_argument('--ui_dropout', type=bool, default=True, help='ui dropout')
 
