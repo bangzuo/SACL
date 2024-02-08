@@ -44,7 +44,7 @@ python main.py --dataset MovieLens --lr 0.0001 --cross_cl_tau 0.1 --context_hops
 - MovieLens dataset
 
 ```
-python main.py --dataset MovieLens --lr 0.0001 --cross_cl_tau 0.9 --context_hops 2 --n_iter mae_rate 0.01 --aug_ui_rate 0.2 --aug_kg_rate 0.8
+python main.py --dataset MovieLens --lr 0.0001 --cross_cl_tau 0.9 --context_hops 2 --mae_rate 0.01 --aug_ui_rate 0.2 --aug_kg_rate 0.8
 ```
 
 
