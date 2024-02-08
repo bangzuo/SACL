@@ -11,11 +11,6 @@ def parse_args():
     # ===== dataset ===== #
     parser.add_argument("--dataset", nargs="?", default="music", help="Choose a dataset:[music, movie, book]")
     parser.add_argument("--data_path", nargs="?", default="data/", help="Input data path.")
-    parser.add_argument('--model', default="SACL", help='use MAE or not')
-    # ===== Model Switch ===== #
-    parser.add_argument('--mae', action='store_true', default=False, help='use MAE or not')
-    parser.add_argument('--ab', type=str, default=None, help='ablation study')
-    # ===== Model HPs ===== #
 
     # ===== train ===== #
     parser.add_argument('--epoch', type=int, default=1000, help='number of epochs')
@@ -48,11 +43,14 @@ def parse_args():
 
     parser.add_argument('--aug_kg_rate', type=float, default=0.2, help='long-tail augmentation keeping rate for knowledge graph')
     parser.add_argument('--aug_ui_rate', type=float, default=0.2, help='long-tail augmentation keeping rate for user-item graph')
+    parser.add_argument('--kl_eps', type=float, default=0.1, help='KL weight')
+    parser.add_argument('--mi_eps', type=float, default=0.1, help='Missing weight')
 
     parser.add_argument("--annealing_type", type=int, default=0, help="annealing_type：0、1、2...")
 
     # ===== relation context ===== #
     parser.add_argument('--context_hops', type=int, default=2, help='number of context hops')
+    
     # ===== save model ===== #
     parser.add_argument("--save", action='store_true', default=False, help="save model or not")
     parser.add_argument("--out_dir", type=str, default="./weights/", help="output directory for model")
