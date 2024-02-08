@@ -269,7 +269,7 @@ if __name__ == '__main__':
                 optimizer.step()
 
                 """generative adversarial module training"""
-                if (args.no_ad is False) and (step % discD_every_iter == 0):
+                if step % discD_every_iter == 0:
                     """full batch 4:1    1) is_ui=True train the user-item graph， 2) is_ui=Flase train the knowledge graph"""
                     train_disc(model, disc_model_ui, optimizer_D_ui, disc_pseudo_real_ui, optimizer_D_pseudo_real_ui, step, step_num, batch, annealing_type=args.annealing_type, is_ui=True)
                     train_disc(model, disc_model_kg, optimizer_D_kg, disc_pseudo_real_kg, optimizer_D_pseudo_real_kg, step, step_num, batch, annealing_type=args.annealing_type, is_ui=False)
