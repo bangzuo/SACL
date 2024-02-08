@@ -94,9 +94,7 @@ class SACL(nn.Module):
         self.n_relations = data_config['n_relations']
         self.n_entities = data_config['n_entities']  # include items
         self.n_nodes = data_config['n_nodes']  # n_users + n_entities
-
-        self.lr = args_config.lr
-        self.l2 = args_config.l2
+        
         self.emb_size = args_config.dim
         self.context_hops = args_config.context_hops
         self.node_dropout = args_config.node_dropout
@@ -108,9 +106,15 @@ class SACL(nn.Module):
         
         self.ablation = args_config.ab
 
-        self.mae_rate = args_config.mae_rate
         self.cross_cl_reg = args_config.cross_cl_reg
         self.cross_cl_tau = args_config.cross_cl_tau
+        self.context_hops = args_config.context_hops
+        self.mae_rate = args_config.mae_rate
+        self.aug_ui_rate = args_config.aug_ui_rate
+        self.aug_kg_rate = args_config.aug_kg_rate   
+        self.kl_eps = args_config.kl_eps
+        self.mi_eps = args_config.mi_eps
+        self.l2 = args_config.l2
 
         self.kg_dropout = args_config.kg_dropout
         self.ui_dropout = args_config.ui_dropout
@@ -120,7 +124,8 @@ class SACL(nn.Module):
         self.samp_func = "torch"
 
         """ the hyperparameter setting for different datasets """
-        if args_config.dataset == 'music':
+        Parameter_tuning_flag = False
+        if args_config.dataset == 'music' and Parameter_tuning_flag:
 
             """ the hyperparameters for cross-view contrastive learning """
             self.cross_cl_reg = 0.01        # cross-view contrastive learning weight
@@ -143,7 +148,7 @@ class SACL(nn.Module):
             self.aug_ui_rate = 0.8		# the user-item graph
             self.aug_kg_rate = 0.2      # the knowledge graph
  
-        elif args_config.dataset == 'book':
+        elif args_config.dataset == 'book' and Parameter_tuning_flag:
             self.cross_cl_reg = 0.01
             self.cross_cl_tau = 0.1
 
@@ -159,7 +164,7 @@ class SACL(nn.Module):
             self.aug_ui_rate = 0.2
             self.aug_kg_rate = 0.8
 
-        elif args_config.dataset == 'movie':
+        elif args_config.dataset == 'movie' and Parameter_tuning_flag:
             self.cross_cl_reg = 0.01
             self.cross_cl_tau = 0.9
 
