@@ -103,8 +103,6 @@ class SACL(nn.Module):
         self.mess_dropout_rate = args_config.mess_dropout_rate
         self.device = torch.device("cuda:" + str(args_config.gpu_id)) if args_config.cuda \
             else torch.device("cpu")
-        
-        self.ablation = args_config.ab
 
         self.cross_cl_reg = args_config.cross_cl_reg
         self.cross_cl_tau = args_config.cross_cl_tau
