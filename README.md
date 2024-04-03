@@ -1,6 +1,6 @@
 # SACL: Self-Augmented Contrastive Learning for Knowledge-aware Recommendation
 
-This is the PyTorch Implementation for the paper: Self-Augmented Contrastive Learning for Knowledge-aware Recommendation
+This is the PyTorch Implementation for the paper: Self-Augmented Contrastive Learning (SACL) for Knowledge-aware Recommendation (DASFAA'24):
 ![Image text](https://github.com/bangzuo/SACL/blob/main/SACL%E6%A8%A1%E5%9E%8B%E6%A1%86%E6%9E%B6%E5%9B%BE.png)
 
 ## Introduction
